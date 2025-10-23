@@ -1,0 +1,26 @@
+{
+  "name": "controlfinanciero",
+  "version": "1.0.0",
+  "description": "Sistema Integral de Gestión Financiera Empresarial",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:backend && npm run build:frontend"
+  },
+  "keywords": [
+    "financial-management",
+    "accounting",
+    "erp",
+    "business"
+  ],
+  "author": "",
+  "license": "UNLICENSED"
+}

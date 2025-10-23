@@ -1,0 +1,505 @@
+// Esquema de base de datos - Sistema de Gestión Financiera
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// MÓDULO: AUTENTICACIÓN Y USUARIOS
+// ============================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      UserRole @default(USER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions      Transaction[]
+  payments          Payment[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  USER
+}
+
+// ============================================
+// MÓDULO 1: CATÁLOGO DE CUENTAS
+// ============================================
+
+model Account {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  name         String
+  description  String?
+  type         AccountType
+  category     AccountCategory
+  parentId     String?
+  parent       Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children     Account[]     @relation("AccountHierarchy")
+  level        Int           @default(1)
+  isActive     Boolean       @default(true)
+  allowsTransactions Boolean   @default(true)
+  balance      Decimal       @default(0) @db.Decimal(15, 2)
+  currency     String        @default("USD")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  transactionLines TransactionLine[]
+  budgets          Budget[]
+
+  @@index([code])
+  @@index([type])
+  @@index([parentId])
+  @@map("accounts")
+}
+
+enum AccountType {
+  ASSET           // Activo
+  LIABILITY       // Pasivo
+  EQUITY          // Patrimonio
+  INCOME          // Ingreso
+  EXPENSE         // Gasto
+}
+
+enum AccountCategory {
+  CURRENT_ASSET
+  NON_CURRENT_ASSET
+  CURRENT_LIABILITY
+  NON_CURRENT_LIABILITY
+  CAPITAL
+  RETAINED_EARNINGS
+  OPERATING_INCOME
+  NON_OPERATING_INCOME
+  OPERATING_EXPENSE
+  NON_OPERATING_EXPENSE
+  COST_OF_SALES
+}
+
+// ============================================
+// MÓDULO 2: TRANSACCIONES
+// ============================================
+
+model Transaction {
+  id            String            @id @default(uuid())
+  transactionNumber String        @unique
+  date          DateTime
+  description   String
+  type          TransactionType
+  reference     String?
+  status        TransactionStatus @default(DRAFT)
+  totalDebit    Decimal           @default(0) @db.Decimal(15, 2)
+  totalCredit   Decimal           @default(0) @db.Decimal(15, 2)
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  lines         TransactionLine[]
+  attachments   Attachment[]
+
+  @@index([date])
+  @@index([status])
+  @@index([transactionNumber])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  JOURNAL_ENTRY    // Asiento manual
+  INVOICE          // Factura
+  PAYMENT          // Pago
+  RECEIPT          // Cobro
+  ADJUSTMENT       // Ajuste
+  OPENING_BALANCE  // Saldo inicial
+  CLOSING_ENTRY    // Cierre
+}
+
+enum TransactionStatus {
+  DRAFT
+  POSTED
+  VOID
+}
+
+model TransactionLine {
+  id              String       @id @default(uuid())
+  transactionId   String
+  transaction     Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account      @relation(fields: [accountId], references: [id])
+  description     String?
+  debit           Decimal      @default(0) @db.Decimal(15, 2)
+  credit          Decimal      @default(0) @db.Decimal(15, 2)
+  costCenterId    String?
+  costCenter      CostCenter?  @relation(fields: [costCenterId], references: [id])
+  projectId       String?
+  project         Project?     @relation(fields: [projectId], references: [id])
+  createdAt       DateTime     @default(now())
+
+  @@index([transactionId])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@index([projectId])
+  @@map("transaction_lines")
+}
+
+// ============================================
+// MÓDULO 3 y 4: PROVEEDORES Y CLIENTES
+// ============================================
+
+model Vendor {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  name            String
+  taxId           String?   @unique
+  email           String?
+  phone           String?
+  address         String?
+  city            String?
+  country         String?
+  paymentTerms    Int       @default(30) // días
+  creditLimit     Decimal?  @db.Decimal(15, 2)
+  currentBalance  Decimal   @default(0) @db.Decimal(15, 2)
+  isActive        Boolean   @default(true)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  invoices        Invoice[] @relation("VendorInvoices")
+
+  @@index([code])
+  @@index([taxId])
+  @@map("vendors")
+}
+
+model Customer {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  name            String
+  taxId           String?   @unique
+  email           String?
+  phone           String?
+  address         String?
+  city            String?
+  country         String?
+  paymentTerms    Int       @default(30)
+  creditLimit     Decimal?  @db.Decimal(15, 2)
+  currentBalance  Decimal   @default(0) @db.Decimal(15, 2)
+  isActive        Boolean   @default(true)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  invoices        Invoice[] @relation("CustomerInvoices")
+
+  @@index([code])
+  @@index([taxId])
+  @@map("customers")
+}
+
+// ============================================
+// MÓDULO 3: CUENTAS POR PAGAR
+// MÓDULO 4: CUENTAS POR COBRAR
+// ============================================
+
+model Invoice {
+  id              String         @id @default(uuid())
+  invoiceNumber   String         @unique
+  type            InvoiceType
+  vendorId        String?
+  vendor          Vendor?        @relation("VendorInvoices", fields: [vendorId], references: [id])
+  customerId      String?
+  customer        Customer?      @relation("CustomerInvoices", fields: [customerId], references: [id])
+  issueDate       DateTime
+  dueDate         DateTime
+  description     String?
+  subtotal        Decimal        @db.Decimal(15, 2)
+  taxAmount       Decimal        @default(0) @db.Decimal(15, 2)
+  total           Decimal        @db.Decimal(15, 2)
+  paidAmount      Decimal        @default(0) @db.Decimal(15, 2)
+  balance         Decimal        @db.Decimal(15, 2)
+  status          InvoiceStatus  @default(PENDING)
+  currency        String         @default("USD")
+  reference       String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items           InvoiceItem[]
+  payments        Payment[]
+  attachments     Attachment[]
+
+  @@index([invoiceNumber])
+  @@index([type])
+  @@index([status])
+  @@index([dueDate])
+  @@index([vendorId])
+  @@index([customerId])
+  @@map("invoices")
+}
+
+enum InvoiceType {
+  PAYABLE    // Por pagar (compra)
+  RECEIVABLE // Por cobrar (venta)
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  taxRate     Decimal  @default(0) @db.Decimal(5, 2)
+  total       Decimal  @db.Decimal(15, 2)
+  accountId   String?
+  costCenterId String?
+  projectId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  paymentNumber   String        @unique
+  type            PaymentType
+  invoiceId       String?
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id])
+  date            DateTime
+  amount          Decimal       @db.Decimal(15, 2)
+  method          PaymentMethod
+  reference       String?
+  description     String?
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  status          PaymentStatus @default(COMPLETED)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([paymentNumber])
+  @@index([type])
+  @@index([date])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+enum PaymentType {
+  OUTGOING // Pago (a proveedor)
+  INCOMING // Cobro (de cliente)
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+// ============================================
+// MÓDULO 5: CENTROS DE COSTO
+// ============================================
+
+model CostCenter {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  parentId    String?
+  parent      CostCenter? @relation("CostCenterHierarchy", fields: [parentId], references: [id])
+  children    CostCenter[] @relation("CostCenterHierarchy")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  transactionLines TransactionLine[]
+  budgets          Budget[]
+
+  @@index([code])
+  @@index([parentId])
+  @@map("cost_centers")
+}
+
+// ============================================
+// MÓDULO 6: PROYECTOS
+// ============================================
+
+model Project {
+  id              String        @id @default(uuid())
+  code            String        @unique
+  name            String
+  description     String?
+  status          ProjectStatus @default(ACTIVE)
+  startDate       DateTime
+  endDate         DateTime?
+  budget          Decimal?      @db.Decimal(15, 2)
+  spent           Decimal       @default(0) @db.Decimal(15, 2)
+  revenue         Decimal       @default(0) @db.Decimal(15, 2)
+  managerId       String?
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  transactionLines TransactionLine[]
+  budgets          Budget[]
+
+  @@index([code])
+  @@index([status])
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// PRESUPUESTOS
+// ============================================
+
+model Budget {
+  id            String      @id @default(uuid())
+  name          String
+  fiscalYear    Int
+  period        String      // "2024-Q1", "2024-01", etc.
+  accountId     String?
+  account       Account?    @relation(fields: [accountId], references: [id])
+  costCenterId  String?
+  costCenter    CostCenter? @relation(fields: [costCenterId], references: [id])
+  projectId     String?
+  project       Project?    @relation(fields: [projectId], references: [id])
+  amount        Decimal     @db.Decimal(15, 2)
+  spent         Decimal     @default(0) @db.Decimal(15, 2)
+  variance      Decimal     @default(0) @db.Decimal(15, 2)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([fiscalYear])
+  @@index([period])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@index([projectId])
+  @@map("budgets")
+}
+
+// ============================================
+// MÓDULO 7: FLUJO DE CAJA
+// ============================================
+
+model CashFlowProjection {
+  id          String              @id @default(uuid())
+  date        DateTime
+  category    CashFlowCategory
+  description String
+  amount      Decimal             @db.Decimal(15, 2)
+  type        CashFlowType
+  status      CashFlowStatus      @default(PROJECTED)
+  reference   String?
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@index([status])
+  @@map("cash_flow_projections")
+}
+
+enum CashFlowCategory {
+  OPERATING
+  INVESTING
+  FINANCING
+}
+
+enum CashFlowType {
+  INFLOW
+  OUTFLOW
+}
+
+enum CashFlowStatus {
+  PROJECTED
+  CONFIRMED
+  REALIZED
+}
+
+// ============================================
+// ARCHIVOS ADJUNTOS
+// ============================================
+
+model Attachment {
+  id            String      @id @default(uuid())
+  fileName      String
+  originalName  String
+  mimeType      String
+  size          Int
+  path          String
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  invoiceId     String?
+  invoice       Invoice?    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@index([transactionId])
+  @@index([invoiceId])
+  @@map("attachments")
+}
+
+// ============================================
+// AUDITORÍA
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  entity     String
+  entityId   String
+  changes    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
