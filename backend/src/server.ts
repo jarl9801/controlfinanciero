@@ -9,10 +9,11 @@ const startServer = async () => {
     console.log('✅ Database connected');
 
     // Iniciar servidor
-    app.listen(config.port, () => {
+    app.listen(config.port, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${config.port}`);
       console.log(`📊 Environment: ${config.nodeEnv}`);
       console.log(`🔗 API URL: http://localhost:${config.port}/api`);
+      console.log(`🌐 Accessible from: http://0.0.0.0:${config.port}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
