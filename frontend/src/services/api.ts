@@ -20,10 +20,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
+    // TEMPORALMENTE DESHABILITADO: Causa bucle infinito porque /login no existe
+    // TODO: Implementar sistema de autenticación completo antes de habilitar
+    // if (error.response?.status === 401) {
+    //   localStorage.removeItem('token');
+    //   window.location.href = '/login';
+    // }
     return Promise.reject(error);
   }
 );
