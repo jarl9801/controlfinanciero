@@ -22,7 +22,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Redirigir al dashboard en lugar de login (por ahora no hay página de login)
+      window.location.href = '/dashboard';
     }
     return Promise.reject(error);
   }

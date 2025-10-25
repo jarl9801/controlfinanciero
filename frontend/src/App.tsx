@@ -26,6 +26,8 @@ function App() {
           <Route path="projects" element={<Projects />} />
           <Route path="cash-flow" element={<CashFlow />} />
           <Route path="reports" element={<Reports />} />
+          {/* Catch-all: redirigir rutas no encontradas al dashboard */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>
     </Box>
